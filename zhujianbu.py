@@ -72,7 +72,8 @@ def get_ctitle(html_str):
     return ctitle,file_names
 
 #获取附件信息
-def get_file(html_str):
+def get_file(html_str,href):
+    print(href)
     bsObj = beautiful(html_str, "html.parser")
     #获取附件信息,并下载
     file_infos = bsObj.find_all("a", {"href": re.compile(r'.doc$|.docx$|.pdf$|.xls$|.xlsx$')})
@@ -87,8 +88,11 @@ def get_file(html_str):
             file_name = file_name + '.' + file_adds
         if re.findall('http',file_href):
             pass
+        elif re.findall('/*/',file_href):
+            file_href = 'http://www.mohurd.gov.cn' + file_href
         else:
-            file_href ='http://www.miit.gov.cn/' + file_href.split('../')[-1]
+            href_add = href.replace(href.split('/')[-1], '')
+            file_href =href_add + file_href
         print(file_href,file_name)
         file_loc = '/home/260199/政府政策公告信息/超链接/' + file_name
         download_file(file_href,file_loc)
@@ -128,7 +132,6 @@ def save_excel(worksheet, row, title,ctitle, html_name, source, date, complete_h
     # 向excel表插入附件超链接
     x = 5
     for down_name in file_names:
-        print(down_name)
         file_loc = '/home/260199/政府政策公告信息/超链接/' + down_name
         link = 'HYPERLINK("%s";"%s")' % (file_loc, down_name)
         worksheet.write(row, x, xlwt.Formula(link))
@@ -138,6 +141,7 @@ def save_excel(worksheet, row, title,ctitle, html_name, source, date, complete_h
 #国家住建部信息公开    静态网页
 def xxgk_url(row,worksheet,url):
     source = '国家住建部信息公开'
+    print(source)
     req = requests.get(url)
     # 获取网页编码格式
     response = urllib.request.urlopen(url).read()
@@ -150,21 +154,19 @@ def xxgk_url(row,worksheet,url):
     item_list = soup.find_all('tr', {'class': 'item'})
     alitem_list = soup.find_all('tr', {'class': 'alitem'})
     al_list = item_list + alitem_list
-    print(len(al_list))
     for al in al_list:
         al = str(al).replace('\n', '').replace('\r', '')
-        print(al)
+        # 获取完整链接、正文完整标题、正文标题、发布日期
         complete_href = re.findall('<a href="(.*?)" message=', al)[0]
         ctitle = re.findall('&amp;&amp;(.*?)" onmousemove=', al)[0].replace('&amp;', '')
         title = re.findall('target="_blank">(.*?)</a>', al)[0]
         date = re.findall('<td>(.*?)</td>', al)[0]
-
-        #获取动态网页源码
-        html,html_str = getHtml_move(complete_href)
-        #保存为html文件
+        #获取静态网页源码
+        html,chard,html_str = getHtml_quiet(complete_href)
+        # 保存为html文件
         html_name = saveHtml(title, html)
-        #获取完整标题，附件（在分页面获取的）
-        ctitle,file_names = get_ctitle(html_str)
+        #获取附件（在分页面获取的）
+        file_names = get_file(html_str,complete_href)
         # 保存到excel表
         save_excel(worksheet, row, title,ctitle, html_name, source, date, complete_href, file_names)
         row = row + 1
@@ -173,6 +175,7 @@ def xxgk_url(row,worksheet,url):
 #国家住建部政策发布   静态网页
 def wjfb_url(row,worksheet,url):
     source = '国家住建部政策发布'
+    print(source)
     req = requests.get(url)
     # 获取网页编码格式
     response = urllib.request.urlopen(url).read()
@@ -186,17 +189,16 @@ def wjfb_url(row,worksheet,url):
     date_list = soup.find_all('td', {'style': 'width:86px;text-align:left; color:#ABABAB;'})
     for i in range(len(item_list)):
         item = str(item_list[i])
+        #获取完整链接、正文标题、发布日期
         complete_href = re.findall('<a href="(.*?)"', item)[0]
         title = re.findall('>(.*?)</a>', item)[0]
         date = re.findall('>\[(.*?)\]</td>', str(date_list[i]))[0]
-        print(complete_href, title, date)
-
-        #获取动态网页源码
+        #获取静态网页源码
         html,chard,html_str = getHtml_quiet(complete_href)
         # 保存为html文件
         html_name = saveHtml(title, html)
         #获取附件（在分页面获取的）
-        file_names = get_file(html_str)
+        file_names = get_file(html_str,complete_href)
         # 保存到excel表
         save_excel(worksheet, row, title,title, html_name, source, date, complete_href, file_names)
         row = row + 1
@@ -207,7 +209,7 @@ def wjfb_url(row,worksheet,url):
 
 def main():
     workbook = xlwt.Workbook()
-    worksheet = workbook.add_sheet('科技部', cell_overwrite_ok=True)
+    worksheet = workbook.add_sheet('国家住建部', cell_overwrite_ok=True)
     header = [u'标题', u'正文', u'政策来源处', u'发布日期', u'政策链接', u'附件']
     i = 0
     # 写表头
@@ -215,13 +217,11 @@ def main():
         worksheet.write(0, i, each_header)
         i += 1
     row = 1
-    # url1 = 'http://www.miit.gov.cn/n1146295/n1652858/n1653100/index.html'
-    # row = wjgs_url(row, worksheet, url1)
-    # print(row)
-    # url2 = 'http://xxgk.miit.gov.cn/gdnps/wjfbindex.jsp'
-    # row = wjfb_url(row, worksheet, url2)
-    url3 = 'http://www.miit.gov.cn/n1146295/n1652858/n1653018/index.html'
-    row = zcjd_url(row,worksheet,url3)
+    url1 = 'http://ginfo.mohurd.gov.cn/'
+    row = xxgk_url(row,worksheet,url1)
+    url2 = 'http://www.mohurd.gov.cn/wjfb/index.html'
+    row = wjfb_url(row,worksheet,url2)
+
     print(row)
     workbook.save("/home/260199/政府政策公告信息/政府政策公告.xlsx")
 
